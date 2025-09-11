@@ -119,7 +119,7 @@ suppressPackageStartupMessages({
 #       node_activity_specific    : activity label if from activity sections
 #
 #    -- ANALYTICS
-#       component_membership          : integer component id after graph analysis
+#       (component_membership removed - no longer necessary)
 
 # 5) How is “relationship intensity” computed?
 #    Inputs per row:
@@ -148,18 +148,17 @@ suppressPackageStartupMessages({
 #    Receives aggregates from long_df.
 
 # 3) Must-have columns
-#    ChildID, EndDate, Finished
+#    ChildID, survey_enddate, survey_completion
 
 # 4) Field map (grouped)
 #    -- IDs & META
-#       ChildID, child_name (PII), EndDate (MM/DD/YYYY), Finished
+#       ChildID, child_name (PII), survey_enddate (MM/DD/YYYY), survey_completion
 #
 #    -- CHILD DEMOGRAPHICS
-#       birthdate, age_in_months
+#       child_birthdate, child_age_in_months
 #       child_gender
 #       child_race, child_race_detail
 #       child_zipcode
-#       hour_sleepatnight, hour_napatday, hour_awake (derived)
 #
 #    -- CHILDCARE
 #       childcare_yn
@@ -176,20 +175,16 @@ suppressPackageStartupMessages({
 #       child_lang_categorized   (multilingual/bilingual/exposure/monolingual)
 #
 #    -- NETWORK COMPOSITION & VALIDITY
-#       network_size
-#       prop_adult_relationship, prop_kin_relationship
-#       alters_listed, alters_with_demo, demographics_completion_rate
-#       validity                ("yes" if ≥75% alters have demo fields else "rejected")
+#       network_size, network_density, network_edges_number
+#       network_component_count, network_component_ratio
+#       network_75cutoff_validity ("yes" if ≥75% alters have demo fields else "rejected")
 #
 #    -- DIVERSITY / EI
-#       race_entropy
-#       racial_ei_index, racial_same, racial_diff
-#       language_entropy, language_p_labels, language_p_vector
-#       linguistic_ei_index, network_size_for_lang_ei, lang_same, lang_diff
-#
-#    -- STRUCTURE
-#       component_count, component_ratio
-#       network_density, edges_number
+#       network_prop_adult_relationship, network_prop_kin_relationship
+#       network_racial_entropy, network_racial_p_labels, network_racial_p_vector
+#       network_racial_ei_index, network_racial_ingroup, network_racial_outgroup
+#       network_language_entropy, network_language_p_labels, network_language_p_vector
+#       network_linguistic_ei_index, network_size_valid_lang, network_lang_ingroup, network_lang_outgroup
 
 # 5) How are child_lang_* categorized?
 #    Prefix rules on child_lang:
@@ -200,8 +195,8 @@ suppressPackageStartupMessages({
 
 # 6) Gotchas
 #    • childcare_type keeps only the main category (examples in parentheses stripped).
-#    • EndDate accepts Qualtrics serials and ISO strings; formatted MM/DD/YYYY.
-#    • component_ratio = (component_count - 1) / (network_size - 1), NA if size<=1.
+#    • survey_enddate accepts Qualtrics serials and ISO strings; formatted MM/DD/YYYY.
+#    • network_component_ratio = (network_component_count - 1) / (network_size - 1), NA if size<=1.
 
 # =============================================================================
 # activity_long  — Activity-level table
@@ -278,7 +273,6 @@ network_wide <- df %>%
     birthdate_1, age_in_months_1,
     child_gender, child_race, child_race_detail,
     child_zipcode,
-    time_spend_1, time_spend_2, time_spend_4,
     childcare_yn, childcare_type,
     childcare_start_age, childcare_size, childcare_child_age,
     childcare_gender, childcare_race,
@@ -287,18 +281,19 @@ network_wide <- df %>%
     child_lang
   ) %>%
   rename(
-    birthdate         = birthdate_1,
-    age_in_months     = age_in_months_1,
-    hour_sleepatnight = time_spend_1,
-    hour_napatday     = time_spend_2,
-    hour_awake        = time_spend_4,
+    child_birthdate   = birthdate_1,
+    child_age_in_months = age_in_months_1,
     survey_respondent = name_filloutsurvey_1
   ) %>%
+  rename(
+    survey_enddate = EndDate,
+    survey_completion = Finished
+  ) %>%
   mutate(
-    # --- Fix EndDate to MM/DD/YYYY ---
-    EndDate = {
-      end_num <- suppressWarnings(as.numeric(EndDate))
-      out <- rep(NA_character_, length(EndDate))
+    # --- Fix survey_enddate to MM/DD/YYYY ---
+    survey_enddate = {
+      end_num <- suppressWarnings(as.numeric(survey_enddate))
+      out <- rep(NA_character_, length(survey_enddate))
 
       # Numeric (Excel serial) -> Date
       idx_num <- !is.na(end_num)
@@ -309,10 +304,10 @@ network_wide <- df %>%
       # Non-numeric -> try ymd_hms, then ymd
       idx_chr <- !idx_num
       if (any(idx_chr)) {
-        dt <- suppressWarnings(lubridate::ymd_hms(EndDate[idx_chr], tz = "UTC"))
+        dt <- suppressWarnings(lubridate::ymd_hms(survey_enddate[idx_chr], tz = "UTC"))
         miss <- is.na(dt)
         if (any(miss)) {
-          dt[miss] <- suppressWarnings(lubridate::ymd(EndDate[idx_chr][miss], tz = "UTC"))
+          dt[miss] <- suppressWarnings(lubridate::ymd(survey_enddate[idx_chr][miss], tz = "UTC"))
         }
         out[idx_chr] <- format(as.Date(dt), "%m/%d/%Y")
       }
@@ -437,8 +432,7 @@ build_mapping_code <- function(prefix, idx, name_vec, raw_vec = NULL) {
 ego_fields <- function(network_wide) {
   list(
     ChildID           = na_blank(pull_safe(network_wide, "ChildID")),
-    ego_hour_awake    = pull_safe(network_wide, "hour_awake", type="double"),
-    ego_age_in_months = suppressWarnings(as.numeric(pull_safe(network_wide, "age_in_months", type="double"))),
+    ego_age_in_months = suppressWarnings(as.numeric(pull_safe(network_wide, "child_age_in_months", type="double"))),
     ego_gender        = dplyr::coalesce(na_blank(pull_safe(network_wide, "child_gender")),
                                         na_blank(pull_safe(network_wide, "child_gender_3_TEXT"))),
     ego_race          = {
@@ -610,7 +604,6 @@ process_sibling <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Sibling",
@@ -715,7 +708,6 @@ process_liveathome <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Liveathome",
@@ -816,7 +808,6 @@ process_teacher <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Teacher",
@@ -917,7 +908,6 @@ process_schoolkid <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Schoolkid",
@@ -1018,7 +1008,6 @@ process_caregiver <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Caregiver",
@@ -1119,7 +1108,6 @@ process_extendedfamily <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Extended family",
@@ -1220,7 +1208,6 @@ process_anyoneelse <- function(df, network_wide, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = "Anyoneelse",
@@ -1323,7 +1310,6 @@ process_activity_adult <- function(df, network_wide, act_id, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = paste0("Act", act_id),
@@ -1427,7 +1413,6 @@ process_activity_kid <- function(df, network_wide, act_id, i) {
     ego_age_in_months = eg$ego_age_in_months,
     ego_gender = eg$ego_gender,
     ego_race   = eg$ego_race,
-    ego_hour_awake = eg$ego_hour_awake,
     ego_language   = eg$ego_language,
 
     node_type  = paste0("Act", act_id, "Kid"),
@@ -1998,7 +1983,8 @@ comp_map <- long_df %>%
 # Attach membership back to long_df (drop any stale column first to avoid suffixing).
 long_df <- long_df %>%
   select(-any_of("component_membership")) %>%
-  left_join(comp_map, by = c("ChildID","component_group"))
+  left_join(comp_map, by = c("ChildID","component_group")) %>%
+  select(-component_membership)
 
 # Count components per child and compute a ratio that scales 1..N components over 1..network_size.
 # If network_size <= 1, ratio is undefined (NA) to avoid meaningless division.
@@ -2012,13 +1998,14 @@ network_wide <- network_wide %>%
   mutate(
     # coerce for safety; avoids weirdness if CSV or earlier steps typed them as character
     network_size     = suppressWarnings(as.numeric(network_size)),
-    component_count  = suppressWarnings(as.numeric(component_count)),
-    component_ratio  = ifelse(
-      !is.na(network_size) & network_size > 1 & !is.na(component_count),
-      round((component_count - 1) / (network_size - 1), 3),
+    network_component_count  = suppressWarnings(as.numeric(component_count)),
+    network_component_ratio  = ifelse(
+      !is.na(network_size) & network_size > 1 & !is.na(network_component_count),
+      round((network_component_count - 1) / (network_size - 1), 3),
       NA_real_
     )
-  )
+  ) %>%
+  select(-component_count)
 
 # =============================================================================
 # Demographics completion (75% rule)
@@ -2026,7 +2013,9 @@ network_wide <- network_wide %>%
 #  - Treat these fields as "demographic evidence": age category, kin present,
 #    race present, language present (excluding the meta), mapping present (for density).
 #  - Mark child "valid" if ≥ 75% of listed alters have at least one such field.
-# We store rates and validity per ChildID in demo_flags, and join into network_wide.
+#  - All network metrics are calculated regardless of validity status.
+#  - Users can filter based on network_75cutoff_validity column if desired.
+# We store validity per ChildID in demo_flags, and join into network_wide.
 # =============================================================================
 
 demo_flags <- long_df %>%
@@ -2043,13 +2032,8 @@ demo_flags <- long_df %>%
   ) %>%
   dplyr::group_by(ChildID) %>%
   dplyr::summarise(
-    alters_listed = dplyr::n(),
-    alters_with_demo = sum(has_demo, na.rm = TRUE),
-    demographics_completion_rate = dplyr::if_else(
-      alters_listed > 0, round(alters_with_demo / alters_listed, 3), NA_real_
-    ),
-    validity = dplyr::if_else(
-      !is.na(demographics_completion_rate) & demographics_completion_rate >= 0.75,
+    network_75cutoff_validity = dplyr::if_else(
+      sum(has_demo, na.rm = TRUE) / dplyr::n() >= 0.75,
       "yes", "rejected"
     ),
     .groups = "drop"
@@ -2057,13 +2041,12 @@ demo_flags <- long_df %>%
 
 # Merge into network_wide. If these columns already exist from prior runs, drop them first.
 network_wide <- network_wide %>%
-  dplyr::select(-dplyr::any_of(c("demographics_completion_rate","validity",
-                                 "alters_listed","alters_with_demo"))) %>%
+  dplyr::select(-dplyr::any_of(c("network_75cutoff_validity"))) %>%
   dplyr::left_join(demo_flags, by = "ChildID")
 
 # =============================================================================
 # Proportions: adults & kin
-# Mask with validity to keep downstream stats honest.
+# All values calculated regardless of validity status.
 # =============================================================================
 
 # Adults defined by categorical age label. We only use rows with non-NA category.
@@ -2076,9 +2059,8 @@ adult_prop <- long_df %>%
     prop_adult_relationship = round(adult_count / total_nodes, 2),
     .groups = "drop"
   ) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(prop_adult_relationship = if_else(validity == "yes", prop_adult_relationship, NA_real_)) %>%
-  select(ChildID, prop_adult_relationship)
+  mutate(network_prop_adult_relationship = prop_adult_relationship) %>%
+  select(ChildID, network_prop_adult_relationship)
 
 network_wide <- network_wide %>%
   left_join(adult_prop, by = "ChildID")
@@ -2093,9 +2075,8 @@ kin_prop <- long_df %>%
     prop_kin_relationship = round(kin_count / total_nodes, 2),
     .groups = "drop"
   ) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(prop_kin_relationship = if_else(validity == "yes", prop_kin_relationship, NA_real_)) %>%
-  select(ChildID, prop_kin_relationship)
+  mutate(network_prop_kin_relationship = prop_kin_relationship) %>%
+  select(ChildID, network_prop_kin_relationship)
 
 network_wide <- network_wide %>%
   left_join(kin_prop, by = "ChildID")
@@ -2103,7 +2084,7 @@ network_wide <- network_wide %>%
 # =============================================================================
 # Racial entropy
 # Classic Shannon entropy over alter race categories (post-trim/post-NA removal).
-# We mask with validity after computing.
+# All values calculated regardless of validity status.
 # =============================================================================
 
 race_entropy <- long_df %>%
@@ -2115,10 +2096,14 @@ race_entropy <- long_df %>%
   count(ChildID, race_cat, name = "n") %>%
   group_by(ChildID) %>%
   mutate(p = n / sum(n)) %>%
-  summarise(race_entropy = -sum(p * log2(p)), .groups = "drop") %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(race_entropy = if_else(validity == "yes", race_entropy, NA_real_)) %>%
-  select(ChildID, race_entropy)
+  arrange(ChildID, desc(p), race_cat) %>%
+  summarise(
+    network_racial_entropy = -sum(p * log2(p)),
+    network_racial_p_labels = paste0("(", paste(race_cat, collapse = "; "), ")"),
+    network_racial_p_vector = paste0("X=(", paste(formatC(p, format = "f", digits = 4), collapse = "; "), ")"),
+    .groups = "drop"
+  ) %>%
+  select(ChildID, network_racial_entropy, network_racial_p_labels, network_racial_p_vector)
 
 network_wide <- network_wide %>%
   left_join(race_entropy, by = "ChildID")
@@ -2127,6 +2112,7 @@ network_wide <- network_wide %>%
 # Racial EI index
 # EI = (different − same) / valid_alters
 # "same" means any overlap between alter race set and child race set.
+# All values calculated regardless of validity status.
 # =============================================================================
 
 # Build child race sets once; carry NA → length 0 vector to avoid false positives.
@@ -2154,22 +2140,21 @@ racial_ei_by_child <- ei_work %>%
   group_by(ChildID) %>%
   summarise(
     valid = sum(!is.na(same_flag)),
-    racial_same = sum(same_flag, na.rm = TRUE),
-    racial_diff = sum(!same_flag, na.rm = TRUE),
-    racial_ei_index = if_else(valid > 0, (racial_diff - racial_same) / valid, NA_real_),
+    network_racial_ingroup = sum(same_flag, na.rm = TRUE),
+    network_racial_outgroup = sum(!same_flag, na.rm = TRUE),
+    network_racial_ei_index = if_else(valid > 0, (network_racial_outgroup - network_racial_ingroup) / valid, NA_real_),
     .groups = "drop"
   ) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(racial_ei_index = if_else(validity == "yes", racial_ei_index, NA_real_)) %>%
-  select(ChildID, racial_ei_index, racial_same, racial_diff)
+  select(ChildID, network_racial_ei_index, network_racial_ingroup, network_racial_outgroup)
 
 network_wide <- network_wide %>%
   left_join(racial_ei_by_child, by = "ChildID")
 
 # =============================================================================
 # Linguistic entropy
-# We weight each alter’s multiple languages equally (1/k across their tokens),
+# We weight each alter's multiple languages equally (1/k across their tokens),
 # then aggregate per child into proportions, then entropy.
+# All values calculated regardless of validity status.
 # =============================================================================
 
 lang_weights <- long_df %>%
@@ -2199,14 +2184,12 @@ language_entropy_by_child <- lang_prop %>%
   group_by(ChildID) %>%
   arrange(ChildID, desc(prop), lang) %>%
   summarise(
-    language_entropy  = entropy_bits(prop),
-    language_p_labels = paste0("(", paste(lang, collapse = ", "), ")"),
-    language_p_vector = paste0("X=(", paste(formatC(prop, format = "f", digits = 4), collapse = ", "), ")"),
+    network_language_entropy  = entropy_bits(prop),
+    network_language_p_labels = paste0("(", paste(lang, collapse = "; "), ")"),
+    network_language_p_vector = paste0("X=(", paste(formatC(prop, format = "f", digits = 4), collapse = "; "), ")"),
     .groups = "drop"
   ) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(language_entropy = if_else(validity == "yes", language_entropy, NA_real_)) %>%
-  select(ChildID, language_entropy, language_p_labels, language_p_vector)
+  select(ChildID, network_language_entropy, network_language_p_labels, network_language_p_vector)
 
 network_wide <- network_wide %>%
   left_join(language_entropy_by_child, by = "ChildID")
@@ -2214,7 +2197,8 @@ network_wide <- network_wide %>%
 # =============================================================================
 # Linguistic EI
 # EI = (different − same) / valid_alters
-# "same" here means alter’s languages are a subset of child’s languages.
+# "same" here means alter's languages are a subset of child's languages.
+# All values calculated regardless of validity status.
 # =============================================================================
 
 child_lang_sets <- network_wide %>%
@@ -2240,19 +2224,17 @@ lang_ei_work <- long_df %>%
 linguistic_ei_by_child <- lang_ei_work %>%
   group_by(ChildID) %>%
   summarise(
-    network_size_for_lang_ei = sum(!is.na(same_flag)),           # denominator actually used
-    lang_same  = sum(same_flag, na.rm = TRUE),
-    lang_diff  = sum(!same_flag, na.rm = TRUE),
-    linguistic_ei_index = if_else(
-      network_size_for_lang_ei > 0,
-      (lang_diff - lang_same) / network_size_for_lang_ei,
+    network_size_valid_lang = sum(!is.na(same_flag)),           # denominator actually used
+    network_lang_ingroup  = sum(same_flag, na.rm = TRUE),
+    network_lang_outgroup  = sum(!same_flag, na.rm = TRUE),
+    network_linguistic_ei_index = if_else(
+      network_size_valid_lang > 0,
+      (network_lang_outgroup - network_lang_ingroup) / network_size_valid_lang,
       NA_real_
     ),
     .groups = "drop"
   ) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(linguistic_ei_index = if_else(validity == "yes", linguistic_ei_index, NA_real_)) %>%
-  select(ChildID, linguistic_ei_index, network_size_for_lang_ei, lang_same, lang_diff)
+  select(ChildID, network_linguistic_ei_index, network_size_valid_lang, network_lang_ingroup, network_lang_outgroup)
 
 network_wide <- network_wide %>%
   left_join(linguistic_ei_by_child, by = "ChildID")
@@ -2260,7 +2242,7 @@ network_wide <- network_wide %>%
 # =============================================================================
 # Network density
 # We build undirected alter–alter edges from mapping and divide by choose(N,2).
-# We mask with validity. Note: choice of using mapping codes ensures identity.
+# All values calculated regardless of validity status. Note: choice of using mapping codes ensures identity.
 # =============================================================================
 
 compute_density_per_child <- function(df_child) {
@@ -2271,7 +2253,7 @@ compute_density_per_child <- function(df_child) {
   N <- length(alters)
   if (N < 2) {
     # Fewer than 2 nodes → density undefined; we return NA for density, 0 edges.
-    return(tibble(network_density = NA_real_, edges_number = 0L))
+    return(tibble(network_density = NA_real_, network_edges_number = 0L))
   }
 
   # Expand mapping strings into pairwise edges and deduplicate undirected edges
@@ -2287,9 +2269,9 @@ compute_density_per_child <- function(df_child) {
     transmute(from = pmin(src, alts), to = pmax(src, alts)) %>%
     distinct()
 
-  edges_number <- nrow(edges_df)
-  dens <- edges_number / choose(N, 2)
-  tibble(network_density = dens, edges_number = edges_number)
+  network_edges_number <- nrow(edges_df)
+  dens <- network_edges_number / choose(N, 2)
+  tibble(network_density = dens, network_edges_number = network_edges_number)
 }
 
 density_by_child <- long_df %>%
@@ -2298,40 +2280,15 @@ density_by_child <- long_df %>%
     out <- compute_density_per_child(df_c)
     tibble(ChildID = df_c$ChildID[1]) %>% bind_cols(out)
   }) %>%
-  left_join(demo_flags, by = "ChildID") %>%
-  mutate(
-    network_density = if_else(validity == "yes", network_density, NA_real_),
-    edges_number    = if_else(validity == "yes", edges_number, NA_integer_)
-  ) %>%
-  select(ChildID, network_density, edges_number)
+  select(ChildID, network_density, network_edges_number)
 
 network_wide <- network_wide %>%
   left_join(density_by_child, by = "ChildID")
 
 # =============================================================================
-# Final mask (belt-and-suspenders)
-# Most metrics were already masked at creation time; this pass prevents stragglers.
+# Note: All values are calculated regardless of validity status
+# Users can filter based on network_75cutoff_validity column if desired
 # =============================================================================
-
-numeric_targets <- c(
-  "prop_adult_relationship",
-  "prop_kin_relationship",
-  "race_entropy",
-  "racial_ei_index",
-  "language_entropy",
-  "linguistic_ei_index",
-  "network_density"
-)
-integer_targets <- c("edges_number")
-
-if ("validity" %in% names(network_wide)) {
-  for (cn in intersect(names(network_wide), numeric_targets)) {
-    network_wide[[cn]] <- ifelse(network_wide$validity == "yes", network_wide[[cn]], NA_real_)
-  }
-  for (cn in intersect(names(network_wide), integer_targets)) {
-    network_wide[[cn]] <- ifelse(network_wide$validity == "yes", network_wide[[cn]], NA_integer_)
-  }
-}
 
 # =============================================================================
 # Column reorganization
@@ -2340,13 +2297,12 @@ if ("validity" %in% names(network_wide)) {
 # =============================================================================
 
 cols_ids_meta <- c(
-  "ChildID", "survey_respondent", "child_name", "EndDate", "Finished"
+  "ChildID", "survey_respondent", "child_name", "survey_enddate", "survey_completion"
 )
 
 cols_child_demo <- c(
-  "birthdate", "age_in_months", "child_gender", "child_race", "child_race_detail",
-  "child_zipcode",
-  "hour_sleepatnight", "hour_napatday", "hour_awake"
+  "child_birthdate", "child_age_in_months", "child_gender", "child_race", "child_race_detail",
+  "child_zipcode"
 )
 
 cols_childcare <- c(
@@ -2359,20 +2315,16 @@ cols_child_lang <- c(
 )
 
 cols_net_composition <- c(
-  "network_size", "component_count", "component_ratio",
-  "alters_listed", "alters_with_demo", "demographics_completion_rate", "validity"
+  "network_size", "network_density", "network_edges_number", "network_component_count", "network_component_ratio",
+  "network_75cutoff_validity"
 )
 
 cols_diversity_ei <- c(
-  "prop_adult_relationship", "prop_kin_relationship",
-  "race_entropy",
-  "racial_ei_index", "racial_same", "racial_diff",
-  "language_entropy", "language_p_labels", "language_p_vector",
-  "linguistic_ei_index", "network_size_for_lang_ei", "lang_same", "lang_diff"
-)
-
-cols_network_structure <- c(
-  "network_density", "edges_number"
+  "network_prop_adult_relationship", "network_prop_kin_relationship",
+  "network_racial_entropy", "network_racial_p_labels", "network_racial_p_vector",
+  "network_racial_ei_index", "network_racial_ingroup", "network_racial_outgroup",
+  "network_language_entropy", "network_language_p_labels", "network_language_p_vector",
+  "network_linguistic_ei_index", "network_size_valid_lang", "network_lang_ingroup", "network_lang_outgroup"
 )
 
 desired_order <- c(
@@ -2381,23 +2333,20 @@ desired_order <- c(
   cols_childcare,
   cols_child_lang,
   cols_net_composition,
-  cols_diversity_ei,
-  cols_network_structure
+  cols_diversity_ei
 )
 
 # Create typed placeholders for any declared-but-missing columns.
 missing_cols <- setdiff(desired_order, names(network_wide))
 if (length(missing_cols)) {
   numeric_like <- c(
-    "age_in_months",
-    "hour_sleepatnight","hour_napatday","hour_awake",
+    "child_age_in_months",
     "childcare_start_age","childcare_size","childcare_child_age",
-    "network_size","component_count","component_ratio",
-    "alters_listed","alters_with_demo","demographics_completion_rate",
-    "prop_adult_relationship","prop_kin_relationship",
-    "race_entropy","racial_ei_index","racial_same","racial_diff",
-    "language_entropy","linguistic_ei_index","network_size_for_lang_ei",
-    "lang_same","lang_diff","network_density","edges_number"
+    "network_size","network_component_count","network_component_ratio",
+    "network_prop_adult_relationship","network_prop_kin_relationship",
+    "network_racial_entropy","network_racial_ei_index","network_racial_ingroup","network_racial_outgroup",
+    "network_language_entropy","network_linguistic_ei_index","network_size_valid_lang",
+    "network_lang_ingroup","network_lang_outgroup","network_density","network_edges_number"
   )
   num_missing <- intersect(missing_cols, numeric_like)
   chr_missing <- setdiff(missing_cols, num_missing)
@@ -2428,4 +2377,3 @@ write.csv(long_df,      '/Users/beiniou/Desktop/SNQ Pipeline/sample_output/long_
 write.csv(network_wide, '/Users/beiniou/Desktop/SNQ Pipeline/sample_output/network_wide.csv', row.names = FALSE)
 write.csv(activity_long,'/Users/beiniou/Desktop/SNQ Pipeline/sample_output/activity_long.csv',row.names = FALSE)
 ```
-
