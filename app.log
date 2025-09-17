@@ -1,0 +1,82 @@
+
+R version 4.3.0 (2023-04-21) -- "Already Tomorrow"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: aarch64-apple-darwin20 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> shiny::runApp('app.R', port=3838, host='127.0.0.1')
+Loading required package: shiny
+Warning: package ‘shiny’ was built under R version 4.3.3
+Warning: package ‘bslib’ was built under R version 4.3.3
+Warning: package ‘DT’ was built under R version 4.3.1
+Warning: package ‘jsonlite’ was built under R version 4.3.3
+Warning: package ‘readr’ was built under R version 4.3.1
+Warning: package ‘ggplot2’ was built under R version 4.3.3
+Warning: package ‘stringr’ was built under R version 4.3.1
+Error in `textInput()`:
+! `...` must be empty.
+✖ Problematic argument:
+• class = "form-control form-control-lg"
+Backtrace:
+     ▆
+  1. └─shiny::runApp("app.R", port = 3838, host = "127.0.0.1")
+  2.   ├─shiny::as.shiny.appobj(appDir)
+  3.   └─shiny:::as.shiny.appobj.character(appDir)
+  4.     └─shiny::shinyAppFile(x)
+  5.       └─shiny:::shinyAppDir_appR(basename(appFile), appDir, options = options)
+  6.         └─shiny (local) appObj()
+  7.           └─shiny (local) func(fname, ...)
+  8.             └─shiny:::sourceUTF8(fullpath, envir = new.env(parent = sharedEnv))
+  9.               └─base::eval(exprs, envir)
+ 10.                 └─base::eval(exprs, envir)
+ 11.                   ├─shiny::..stacktraceon..(...)
+ 12.                   ├─bslib::page_navbar(...)
+ 13.                   │ └─bslib:::navs_bar_(...)
+ 14.                   │   └─bslib:::navbarPage_(...)
+ 15.                   │     └─bslib:::buildTabset(..., ulClass = ulClass, id = id, selected = selected)
+ 16.                   │       ├─bslib:::dropNulls(list2(...))
+ 17.                   │       └─rlang::list2(...)
+ 18.                   ├─bslib::nav_panel(...)
+ 19.                   │ └─bslib:::tabPanel_(title, ..., value = value, icon = icon)
+ 20.                   │   └─htmltools::div(...)
+ 21.                   │     └─rlang::dots_list(...)
+ 22.                   ├─htmltools::div(...)
+ 23.                   │ └─rlang::dots_list(...)
+ 24.                   ├─htmltools::div(...)
+ 25.                   │ └─rlang::dots_list(...)
+ 26.                   ├─htmltools::div(...)
+ 27.                   │ └─rlang::dots_list(...)
+ 28.                   ├─bslib::card(...)
+ 29.                   │ └─rlang::list2(...)
+ 30.                   ├─bslib::card_body(...)
+ 31.                   │ └─htmltools::div(...)
+ 32.                   │   └─rlang::dots_list(...)
+ 33.                   ├─htmltools::div(...)
+ 34.                   │ └─rlang::dots_list(...)
+ 35.                   ├─htmltools::div(...)
+ 36.                   │ └─rlang::dots_list(...)
+ 37.                   └─shiny::textInput("c_name", "", placeholder = "Enter your full name", class = "form-control form-control-lg")
+ 38.                     └─rlang::check_dots_empty()
+ 39.                       └─rlang:::action_dots(...)
+ 40.                         ├─base (local) try_dots(...)
+ 41.                         └─rlang (local) action(...)
+Execution halted
+2025-09-17 09:12:11 [Process Debug] df rows: 3  unique ChildIDs in:  Testing #3, Testing #4, Testing #5
+2025-09-17 09:12:11 [Process Debug] ego rows: 3  unique ChildIDs out:  Testing #3, Testing #4, Testing #5 
+
+2025-09-17 09:22:21 [Process Debug] df rows: 5  unique ChildIDs in:  Testing#1, Testing #2, Testing #3, Testing #4, Testing #5
+2025-09-17 09:22:21 [Process Debug] ego rows: 5  unique ChildIDs out:  Testing#1, Testing #2, Testing #3, Testing #4, Testing #5 
+

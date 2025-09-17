@@ -1,0 +1,14 @@
+timestamp,type,institution,lab,email,phone_number,purpose
+2025-01-15 10:00:00 UTC,intake,Test University,Test Lab,test@test.edu,1234567890,Testing CSV writing
+2025-09-13 21:38:51 UTC,intake,orca,hu,orca@hu.edu,5545456776,yes
+2025-09-13 21:40:38 UTC,intake,Luca,Liu Lab,luca@liu.edu,4453342232,Testing again
+2025-09-17 13:49:22 UTC,intake,University of Chicago,r,44@hfd.com,3343434343,ff
+2025-09-17 13:49:23 UTC,intake,University of Chicago,r,44@hfd.com,3343434343,ff
+2025-09-17 13:49:24 UTC,intake,University of Chicago,r,44@hfd.com,3343434343,ff
+2025-09-17 13:57:32 UTC,intake,University of Chicago,r,uuu@gmail.com,23434343434,NA
+2025-09-17 14:01:29 UTC,intake,5,4,f@g.com,34343,NA
+2025-09-17 14:02:59 UTC,intake,University of Chicago,e,e@qe.com,NA,NA
+2025-09-17 14:08:44 UTC,intake,r,r,t@33.edu,NA,NA
+2025-09-17 14:11:49 UTC,intake,r,t,d@gg.com,NA,NA
+2025-09-17 14:18:26 UTC,intake,e,w,f@qq.om,NA,NA
+2025-09-17 14:22:07 UTC,intake,University of Chicago,r,77@gmail.com,,
